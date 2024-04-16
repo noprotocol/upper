@@ -94,13 +94,29 @@ AKAMAI_MAX_SIZE=2048
 
 ### Tuning
 
-With `Cache-Control` headers you can disabled caching for certain templates:
+In a template, you can fully disable caching like so:
+
+```
+{% do upper.cache.never() %}
+```
+
+…which is a shorthand for:
 
 ```
 {% header "Cache-Control: private, no-cache" %}
 ```
 
+By default the `defaultMaxAge` config setting will be used to determine the cache duration to set. This can be overridden in a template:
 
+```
+{% do upper.cache.for('5 minutes') %}
+```
+
+…which is shorthand for:
+
+```
+{% header "Cache-Control: public, s-maxage=300" %}
+```
 
 ### Performance results
 ![example](https://github.com/ostark/upper/blob/master/resources/preformance.png)

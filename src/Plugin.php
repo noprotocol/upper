@@ -39,6 +39,7 @@ class Plugin extends BasePlugin
 
     // Header
     const INFO_HEADER_NAME = 'X-UPPER-CACHE';
+    const TRUNCATED_HEADER_NAME = 'X-UPPER-CACHE-TRUNCATED';
 
     public $schemaVersion = '1.0.1';
 
@@ -73,6 +74,9 @@ class Plugin extends BasePlugin
         if ($this->getSettings()->useLocalTags) {
             EventRegistrar::registerFallback();
         }
+
+        // Register Twig extension
+        \Craft::$app->getView()->registerTwigExtension(new TwigExtension);
     }
 
     // ServiceLocators
