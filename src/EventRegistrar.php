@@ -67,6 +67,7 @@ class EventRegistrar
             $request->getIsActionRequest() ||
             !$request->getIsGet()
         ) {
+            /** @var \ostark\upper\behaviors\CacheControlBehavior|\ostark\upper\behaviors\TagHeaderBehavior|Response  $response */
             $response = \Craft::$app->getResponse();
             $response->addCacheControlDirective('private');
             $response->addCacheControlDirective('no-cache');
@@ -94,7 +95,7 @@ class EventRegistrar
         // Add the tags to the response header
         Event::on(View::class, View::EVENT_AFTER_RENDER_PAGE_TEMPLATE, function (TemplateEvent $event) {
 
-            /** @var \yii\web\Response $response */
+            /** @var \yii\web\Response|\ostark\upper\behaviors\CacheControlBehavior|\ostark\upper\behaviors\TagHeaderBehavior $response */
             $response      = \Craft::$app->getResponse();
             $plugin        = Plugin::getInstance();
             $tagCollection = $plugin->getTagCollection();
@@ -122,7 +123,7 @@ class EventRegistrar
 
             // Flag truncation
             if (count($tags) > count($maxedTags)) {
-                $headers->set(Plugin::TRUNCATED_HEADER_NAME, count($tags) - count($maxedTags));
+                $headers->set(Plugin::TRUNCATED_HEADER_NAME, (string) (count($tags) - count($maxedTags)));
             }
 
             $response->setSharedMaxAge($maxAge);
