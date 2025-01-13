@@ -2,10 +2,8 @@
 
 namespace ostark\upper;
 
-use craft\base\Element;
 use craft\elements\db\ElementQuery;
 use craft\events\ElementEvent;
-use craft\events\ElementStructureEvent;
 use craft\events\MoveElementEvent;
 use craft\events\PopulateElementEvent;
 use craft\events\RegisterCacheOptionsEvent;
@@ -13,11 +11,13 @@ use craft\events\SectionEvent;
 use craft\events\TemplateEvent;
 use craft\helpers\ElementHelper;
 use craft\services\Elements;
-use craft\services\Sections;
+use craft\services\Entries;
 use craft\services\Structures;
 use craft\utilities\ClearCaches;
 use craft\web\Response;
 use craft\web\View;
+use ostark\upper\behaviors\CacheControlBehavior;
+use ostark\upper\behaviors\TagHeaderBehavior;
 use ostark\upper\events\CacheResponseEvent;
 use ostark\upper\events\PurgeEvent;
 use ostark\upper\jobs\PurgeCacheJob;
@@ -36,16 +36,13 @@ class EventRegistrar
         Event::on(Elements::class, Elements::EVENT_AFTER_SAVE_ELEMENT, function ($event) {
             static::handleUpdateEvent($event);
         });
-        Event::on(Element::class, Element::EVENT_AFTER_MOVE_IN_STRUCTURE, function ($event) {
-            static::handleUpdateEvent($event);
-        });
         Event::on(Elements::class, Elements::EVENT_AFTER_DELETE_ELEMENT, function ($event) {
             static::handleUpdateEvent($event);
         });
         Event::on(Structures::class, Structures::EVENT_AFTER_MOVE_ELEMENT, function ($event) {
             static::handleUpdateEvent($event);
         });
-        Event::on(Sections::class, Sections::EVENT_AFTER_SAVE_SECTION, function ($event) {
+        Event::on( Entries::class, Entries::EVENT_AFTER_SAVE_SECTION, function ($event) {
             static::handleUpdateEvent($event);
         });
     }
@@ -67,7 +64,7 @@ class EventRegistrar
             $request->getIsActionRequest() ||
             !$request->getIsGet()
         ) {
-            /** @var \ostark\upper\behaviors\CacheControlBehavior|\ostark\upper\behaviors\TagHeaderBehavior|Response  $response */
+            /** @var CacheControlBehavior|TagHeaderBehavior|Response  $response */
             $response = \Craft::$app->getResponse();
             $response->addCacheControlDirective('private');
             $response->addCacheControlDirective('no-cache');
@@ -95,7 +92,7 @@ class EventRegistrar
         // Add the tags to the response header
         Event::on(View::class, View::EVENT_AFTER_RENDER_PAGE_TEMPLATE, function (TemplateEvent $event) {
 
-            /** @var \yii\web\Response|\ostark\upper\behaviors\CacheControlBehavior|\ostark\upper\behaviors\TagHeaderBehavior $response */
+            /** @var \yii\web\Response|CacheControlBehavior|TagHeaderBehavior $response */
             $response      = \Craft::$app->getResponse();
             $plugin        = Plugin::getInstance();
             $tagCollection = $plugin->getTagCollection();
@@ -248,7 +245,7 @@ class EventRegistrar
             $tags[] = Plugin::TAG_PREFIX_SECTION . $event->section->id;
         }
 
-        if ($event instanceof MoveElementEvent or $event instanceof ElementStructureEvent) {
+        if ($event instanceof MoveElementEvent) {
             $tags[] = Plugin::TAG_PREFIX_STRUCTURE . $event->structureId;
         }
 
