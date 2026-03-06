@@ -238,6 +238,21 @@ class EventRegistrar
                 if (!$event->isNew) {
                     $tags[] = Plugin::TAG_PREFIX_ELEMENT . $event->element->getId();
                 }
+
+                // Walk up ownership chain to clear the root owner's tags as well
+                if ($event->element instanceof \craft\elements\Entry && !empty($event->element->ownerId)) {
+                    $owner = $event->element->getOwner();
+                    $maxDepth = 5;
+                    while ($owner && !empty($owner->ownerId) && $maxDepth-- > 0) {
+                        $owner = $owner->getOwner();
+                    }
+                    if ($owner) {
+                        if (isset($owner->sectionId)) {
+                            $tags[] = Plugin::TAG_PREFIX_SECTION . $owner->sectionId;
+                        }
+                        $tags[] = Plugin::TAG_PREFIX_ELEMENT . $owner->getId();
+                    }
+                }
             }
         }
 
