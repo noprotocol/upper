@@ -213,10 +213,6 @@ class EventRegistrar
 
         if ($event instanceof ElementEvent) {
 
-            if (!Plugin::getInstance()->getSettings()->isCachableElement(get_class($event->element))) {
-                return;
-            }
-
             // Prevent purge on updates of drafts or revisions
             if (ElementHelper::isDraftOrRevision($event->element)) {
                 return;
@@ -227,30 +223,26 @@ class EventRegistrar
                 return;
             }
 
-            if ($event->element instanceof \craft\elements\GlobalSet && is_string($event->element->handle)) {
-                $tags[] = $event->element->handle;
-            } elseif ($event->element instanceof \craft\elements\Asset && $event->isNew) {
-                $tags[] = (string)$event->element->volumeId;
-            } else {
-                if (isset($event->element->sectionId)) {
-                    $tags[] = Plugin::TAG_PREFIX_SECTION . $event->element->sectionId;
+            // For nested elements (blocks), purge the root owner's tags
+            $rootOwner = $event->element->getRootOwner();
+            if ($rootOwner !== $event->element) {
+                if (isset($rootOwner->sectionId)) {
+                    $tags[] = Plugin::TAG_PREFIX_SECTION . $rootOwner->sectionId;
                 }
-                if (!$event->isNew) {
-                    $tags[] = Plugin::TAG_PREFIX_ELEMENT . $event->element->getId();
-                }
+                $tags[] = Plugin::TAG_PREFIX_ELEMENT . $rootOwner->getId();
+            }
 
-                // Walk up ownership chain to clear the root owner's tags as well
-                if ($event->element instanceof \craft\elements\Entry && !empty($event->element->ownerId)) {
-                    $owner = $event->element->getOwner();
-                    $maxDepth = 5;
-                    while ($owner && !empty($owner->ownerId) && $maxDepth-- > 0) {
-                        $owner = $owner->getOwner();
+            if (Plugin::getInstance()->getSettings()->isCachableElement(get_class($event->element))) {
+                if ($event->element instanceof \craft\elements\GlobalSet && is_string($event->element->handle)) {
+                    $tags[] = $event->element->handle;
+                } elseif ($event->element instanceof \craft\elements\Asset && $event->isNew) {
+                    $tags[] = (string)$event->element->volumeId;
+                } else {
+                    if (isset($event->element->sectionId)) {
+                        $tags[] = Plugin::TAG_PREFIX_SECTION . $event->element->sectionId;
                     }
-                    if ($owner) {
-                        if (isset($owner->sectionId)) {
-                            $tags[] = Plugin::TAG_PREFIX_SECTION . $owner->sectionId;
-                        }
-                        $tags[] = Plugin::TAG_PREFIX_ELEMENT . $owner->getId();
+                    if (!$event->isNew) {
+                        $tags[] = Plugin::TAG_PREFIX_ELEMENT . $event->element->getId();
                     }
                 }
             }
@@ -267,6 +259,7 @@ class EventRegistrar
         if (count($tags) === 0) {
             return;
         }
+        $tags = array_unique($tags);
 
         foreach ($tags as $tag) {
             $tag = Plugin::getInstance()->getTagCollection()->prepareTag($tag);
