@@ -42,7 +42,7 @@ class EventRegistrar
         Event::on(Structures::class, Structures::EVENT_AFTER_MOVE_ELEMENT, function ($event) {
             static::handleUpdateEvent($event);
         });
-        Event::on( Entries::class, Entries::EVENT_AFTER_SAVE_SECTION, function ($event) {
+        Event::on(Entries::class, Entries::EVENT_AFTER_SAVE_SECTION, function ($event) {
             static::handleUpdateEvent($event);
         });
     }
@@ -85,7 +85,16 @@ class EventRegistrar
                 Plugin::getInstance()->getTagCollection()->add($event->element->handle);
             }
 
-            // Add to collection
+            // Nested elements inherit the root owner's entry tag
+            $rootOwner = $event->element->getRootOwner();
+            if ($rootOwner !== null && $rootOwner !== $event->element) {
+                Plugin::getInstance()->getTagCollection()->add(
+                    Plugin::TAG_PREFIX_ELEMENT . $rootOwner->getId()
+                );
+                return;
+            }
+
+            // Add top-level element tags to the collection
             Plugin::getInstance()->getTagCollection()->addTagsFromElement($event->row);
         });
 
@@ -137,7 +146,6 @@ class EventRegistrar
         });
     }
 
-
     public static function registerCpEvents()
     {
         // Register cache purge checkbox
@@ -156,7 +164,6 @@ class EventRegistrar
             }
         );
     }
-
 
     public static function registerFallback()
     {
@@ -202,14 +209,12 @@ class EventRegistrar
         });
     }
 
-
     /**
      * @param \yii\base\Event $event
      */
     protected static function handleUpdateEvent(Event $event)
     {
         $tags = [];
-
 
         if ($event instanceof ElementEvent) {
 
@@ -223,16 +228,11 @@ class EventRegistrar
                 return;
             }
 
-            // For nested elements (blocks), purge the root owner's tags
+            // For nested elements (blocks), purge only the root owner's entry tag
             $rootOwner = $event->element->getRootOwner();
-            if ($rootOwner !== $event->element) {
-                if (isset($rootOwner->sectionId)) {
-                    $tags[] = Plugin::TAG_PREFIX_SECTION . $rootOwner->sectionId;
-                }
+            if ($rootOwner !== null && $rootOwner !== $event->element) {
                 $tags[] = Plugin::TAG_PREFIX_ELEMENT . $rootOwner->getId();
-            }
-
-            if (Plugin::getInstance()->getSettings()->isCachableElement(get_class($event->element))) {
+            } elseif (Plugin::getInstance()->getSettings()->isCachableElement(get_class($event->element))) {
                 if ($event->element instanceof \craft\elements\GlobalSet && is_string($event->element->handle)) {
                     $tags[] = $event->element->handle;
                 } elseif ($event->element instanceof \craft\elements\Asset && $event->isNew) {
