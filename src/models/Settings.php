@@ -64,6 +64,22 @@ class Settings extends Model
      */
     public $maxBytesForCacheTagHeader = null;
 
+    /**
+     * Sections whose pages list entries from another section (overviews).
+     *
+     * Such a page is tagged with the section it lists, but a CDN is free to drop
+     * tags (Akamai ignores anything past 128 tags / 8KB per object), so an overview
+     * would silently stop being purged. Purge the tag of the section the overview
+     * itself belongs to instead.
+     *
+     * Format: ['<section of changed entry>' => ['<section of overview page>', ...]]
+     *
+     * Example: ['disruptionDetail' => ['disruptionOverview']]
+     *
+     * @var array<string, string[]>
+     */
+    public $relatedSections = [];
+
     // Public Methods
     // =========================================================================
 

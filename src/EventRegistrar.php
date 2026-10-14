@@ -3,6 +3,7 @@
 namespace ostark\upper;
 
 use craft\elements\db\ElementQuery;
+use craft\elements\Entry;
 use craft\events\ElementEvent;
 use craft\events\MoveElementEvent;
 use craft\events\PopulateElementEvent;
@@ -256,11 +257,23 @@ class EventRegistrar
             $tags[] = Plugin::TAG_PREFIX_STRUCTURE . $event->structureId;
         }
 
-        if (count($tags) === 0) {
-            return;
-        }
-        $tags = array_unique($tags);
+        // Pages that list entries of a section (overviews) live in another section.
+        // Such a page is tagged with the section it lists, and a CDN is free to
+        // drop tags, so the section tag of the listing page is purged as well.
+        $tags = array_unique(array_merge($tags, static::resolveRelatedTags($event)));
 
+        if (count($tags) > 0) {
+            static::purgeTags($tags);
+        }
+    }
+
+    /**
+     * Queue a purge job for each given tag.
+     *
+     * @param string[] $tags
+     */
+    public static function purgeTags(array $tags): void
+    {
         foreach ($tags as $tag) {
             $tag = Plugin::getInstance()->getTagCollection()->prepareTag($tag);
 
@@ -279,5 +292,42 @@ class EventRegistrar
 
             Plugin::getInstance()->trigger(Plugin::EVENT_AFTER_PURGE, $purgeEvent);
         }
+    }
+
+    /**
+     * Tags to purge on top of the changed element's own tags.
+     *
+     * @param \yii\base\Event $event
+     *
+     * @return string[]
+     */
+    protected static function resolveRelatedTags(Event $event): array
+    {
+        $settings = Plugin::getInstance()->getSettings();
+
+        if (!$event instanceof ElementEvent || !$settings->relatedSections) {
+            return [];
+        }
+
+        // Blocks are saved on behalf of the entry holding them
+        $element = $event->element;
+        $rootOwner = $element->getRootOwner();
+        if ($rootOwner !== null && $rootOwner !== $element) {
+            $element = $rootOwner;
+        }
+
+        if (!$element instanceof Entry || $element->section === null) {
+            return [];
+        }
+
+        $tags = [];
+
+        foreach ($settings->relatedSections[$element->section->handle] ?? [] as $relatedHandle) {
+            if ($relatedSection = \Craft::$app->getEntries()->getSectionByHandle($relatedHandle)) {
+                $tags[] = Plugin::TAG_PREFIX_SECTION . $relatedSection->id;
+            }
+        }
+
+        return $tags;
     }
 }

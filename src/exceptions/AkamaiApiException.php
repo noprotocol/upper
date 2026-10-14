@@ -28,7 +28,7 @@ class AkamaiApiException extends \Exception
 
         // Extract error message from body
         $status = $response->getStatusCode();
-        $json   = json_decode($response->getBody());
+        $json   = json_decode((string)$response->getBody());
         if (json_last_error() !== JSON_ERROR_NONE) {
             return new static("Akamai API error ($status) on: '$uri'", $status);
         }
@@ -36,6 +36,12 @@ class AkamaiApiException extends \Exception
         // Error message
         if (isset($json->msg)) {
             return new static($json->msg . ", uri: '$uri'", $response->getStatusCode());
+        }
+
+        // CCU (Fast Purge) responses use title/detail instead of msg
+        if (isset($json->title)) {
+            $detail = isset($json->detail) ? ": {$json->detail}" : '';
+            return new static($json->title . $detail . ", uri: '$uri'", $response->getStatusCode());
         }
 
         // Unknown

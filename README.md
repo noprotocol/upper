@@ -92,6 +92,59 @@ AKAMAI_ACCESS_TOKEN=<REPLACE-ME>
 AKAMAI_MAX_SIZE=2048
 ```
 
+Akamai expects the cache tags to be delimited by a comma (a space is not a valid
+delimiter and not valid inside a tag). Set it in your config:
+
+```php
+'drivers' => [
+    'akamai' => [
+        'tagHeaderName'      => 'Edge-Cache-Tag',
+        'tagHeaderDelimiter' => ',',
+        // …
+    ],
+],
+```
+
+`AKAMAI_MAX_SIZE` is the number of body bytes EdgeGrid uses to sign a purge
+request. Leave it empty to use EdgeGrid's default, or make sure it is at least as
+large as your biggest purge body: anything beyond it is not part of the signature
+and Akamai answers with `403`. Upper chunks purge requests to stay within that
+size (and within Akamai's own 50 KB body limit).
+
+### Purging overview pages
+
+Pages that list entries of another section (overviews) are tagged with the section
+they list. A CDN is free to drop tags — Akamai ignores anything past 128 tags or
+8 KB per object — and then the overview silently stops being purged when one of the
+entries it lists changes.
+
+Tell Upper which pages depend on which section:
+
+```php
+// Key:   section handle of the changed entry
+// Value: section handles of the pages listing those entries
+'relatedSections' => [
+    'disruptionDetail' => ['disruptionOverview'],
+],
+```
+
+When an entry of `disruptionDetail` is saved or deleted, Upper purges the
+`disruptionOverview` section tag as well. Matrix blocks are resolved to the entry
+holding them, so editing an update block also refreshes the overview.
+
+#### Why this purges by tag and not by url
+
+Cache tags are scoped to the whole Akamai account, so one tag purge clears every
+cached object carrying that tag — across all properties, hostnames and languages.
+A multi-site setup whose overviews live on several domains therefore needs exactly
+one purge request per network.
+
+Url purging is the opposite: the hostname is part of the cache key, so a url has to
+match the cached object exactly (scheme and hostname included), Fast Purge supports
+no wildcards, and a relative url prefixed with `DEFAULT_SITE_URL` could only ever
+purge objects on that single hostname. Upper therefore purges pages by tag only;
+the driver skips relative urls with a warning if anything ever hands it one.
+
 ### Tuning
 
 In a template, you can fully disable caching like so:
