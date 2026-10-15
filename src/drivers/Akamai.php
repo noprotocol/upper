@@ -168,12 +168,11 @@ class Akamai extends AbstractPurger implements CachePurgeInterface
         $status = $response->getStatusCode();
 
         if ($status === 429) {
-            // Rate limited. Akamai doesn't consume tokens for denied requests, so
-            // a later change will purge again. Never throw, the other environment
-            // (or the next object) can still be purged.
+            // Rate limited (Akamai allows 500 tag objects per minute). Denied
+            // requests don't consume tokens, so returning false lets the caller
+            // retry later instead of dropping the purge.
             \Craft::warning(
-                "Akamai rate limit exceeded while purging $type for $environment."
-                . " The purge will be retried on the next change. Response: " . (string)$response->getBody(),
+                "Akamai rate limit exceeded while purging $type for $environment. Response: " . (string)$response->getBody(),
                 'upper'
             );
 

@@ -145,6 +145,22 @@ no wildcards, and a relative url prefixed with `DEFAULT_SITE_URL` could only eve
 purge objects on that single hostname. Upper therefore purges pages by tag only;
 the driver skips relative urls with a warning if anything ever hands it one.
 
+#### Purge reliability
+
+Every purged tag counts towards the CDN's rate limit — Akamai allows 500 tag objects
+per minute — so Upper keeps the number of purges down and makes sure a refused purge
+isn't lost:
+
+- tags queued within a 2 second window are skipped, because Craft fires a save event
+  for every site an element is propagated to, and an import or bulk status change
+  saves element after element (a single entry change used to queue 13 purge jobs for
+  4 distinct tags)
+- a purge that the driver reports as failed (a `429` rate limit, for instance) is
+  requeued with a 30 second delay, up to three attempts, instead of being dropped:
+  a lost purge leaves a page stale until its own `max-age` expires
+- both are logged to the `upper` log category, so a purge that keeps failing is
+  visible there rather than silent
+
 ### Tuning
 
 In a template, you can fully disable caching like so:

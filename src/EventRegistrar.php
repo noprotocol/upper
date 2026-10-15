@@ -31,6 +31,25 @@ use yii\base\Event;
  */
 class EventRegistrar
 {
+    /**
+     * Tags already queued in this process, with the time they were queued.
+     *
+     * Craft fires a save event for every site an element is propagated to, and a job
+     * that saves many elements (a bulk status change, an import) fires one per
+     * element, so the same tag would be queued over and over: a single entry change
+     * turned into 13 purge jobs for 4 distinct tags. Every tag counts towards the
+     * CDN's purge rate limit, so repeated tags are skipped here.
+     *
+     * @var array<string, int>
+     */
+    private static array $queuedTags = [];
+
+    /**
+     * How long a queued tag suppresses duplicates, in seconds. Long enough to
+     * collapse the events of one change, short enough that a later change purges
+     * the tag again — a page can be re-cached between two changes.
+     */
+    private const TAG_DEDUPE_WINDOW = 2;
 
     public static function registerUpdateEvents()
     {
@@ -274,8 +293,17 @@ class EventRegistrar
      */
     public static function purgeTags(array $tags): void
     {
+        $now = time();
+
         foreach ($tags as $tag) {
             $tag = Plugin::getInstance()->getTagCollection()->prepareTag($tag);
+
+            // Skip tags queued moments ago (see $queuedTags)
+            if (isset(self::$queuedTags[$tag]) && self::$queuedTags[$tag] > $now - self::TAG_DEDUPE_WINDOW) {
+                continue;
+            }
+
+            self::$queuedTags[$tag] = $now;
 
             $purgeEvent = new PurgeEvent([
                 'tag' => $tag,
@@ -291,6 +319,13 @@ class EventRegistrar
             ));
 
             Plugin::getInstance()->trigger(Plugin::EVENT_AFTER_PURGE, $purgeEvent);
+        }
+
+        if (count(self::$queuedTags) > 1000) {
+            self::$queuedTags = array_filter(
+                self::$queuedTags,
+                fn(int $queuedAt) => $queuedAt > $now - self::TAG_DEDUPE_WINDOW
+            );
         }
     }
 
