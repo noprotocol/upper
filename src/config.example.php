@@ -30,6 +30,17 @@ return [
     // Stored in bytes, typically as `16 * 1024` for 16KB
     'maxBytesForCacheTagHeader' => null,
 
+    // Pages that list entries of another section (overviews) need to be purged
+    // when an entry they list changes. Such a page is tagged with the section it
+    // lists, but a CDN may drop tags (Akamai ignores tags past 128 tags / 8KB per
+    // object), which would silently stop the overview from being invalidated.
+    //
+    // Key:   section handle of the changed entry
+    // Value: section handles of the pages listing those entries
+    //
+    // Example: ['disruptionDetail' => ['disruptionOverview']]
+    'relatedSections' => [],
+
     // Drivers settings
     'drivers'       => [
 
@@ -74,6 +85,8 @@ return [
         // Akamai config
         'akamai'    => [
             'tagHeaderName'     => 'Edge-Cache-Tag',
+            // Akamai documents a comma as the only valid tag delimiter
+            'tagHeaderDelimiter' => ',',
             'host'              => getenv('AKAMAI_HOST'),
             'clientToken'       => getenv('AKAMAI_CLIENT_TOKEN'),
             'clientSecret'      => getenv('AKAMAI_CLIENT_SECRET'),

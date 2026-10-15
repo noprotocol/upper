@@ -3,6 +3,7 @@
 namespace ostark\upper;
 
 use craft\elements\db\ElementQuery;
+use craft\elements\Entry;
 use craft\events\ElementEvent;
 use craft\events\MoveElementEvent;
 use craft\events\PopulateElementEvent;
@@ -30,6 +31,25 @@ use yii\base\Event;
  */
 class EventRegistrar
 {
+    /**
+     * Tags already queued in this process, with the time they were queued.
+     *
+     * Craft fires a save event for every site an element is propagated to, and a job
+     * that saves many elements (a bulk status change, an import) fires one per
+     * element, so the same tag would be queued over and over: a single entry change
+     * turned into 13 purge jobs for 4 distinct tags. Every tag counts towards the
+     * CDN's purge rate limit, so repeated tags are skipped here.
+     *
+     * @var array<string, int>
+     */
+    private static array $queuedTags = [];
+
+    /**
+     * How long a queued tag suppresses duplicates, in seconds. Long enough to
+     * collapse the events of one change, short enough that a later change purges
+     * the tag again — a page can be re-cached between two changes.
+     */
+    private const TAG_DEDUPE_WINDOW = 2;
 
     public static function registerUpdateEvents()
     {
@@ -256,13 +276,34 @@ class EventRegistrar
             $tags[] = Plugin::TAG_PREFIX_STRUCTURE . $event->structureId;
         }
 
-        if (count($tags) === 0) {
-            return;
+        // Pages that list entries of a section (overviews) live in another section.
+        // Such a page is tagged with the section it lists, and a CDN is free to
+        // drop tags, so the section tag of the listing page is purged as well.
+        $tags = array_unique(array_merge($tags, static::resolveRelatedTags($event)));
+
+        if (count($tags) > 0) {
+            static::purgeTags($tags);
         }
-        $tags = array_unique($tags);
+    }
+
+    /**
+     * Queue a purge job for each given tag.
+     *
+     * @param string[] $tags
+     */
+    public static function purgeTags(array $tags): void
+    {
+        $now = time();
 
         foreach ($tags as $tag) {
             $tag = Plugin::getInstance()->getTagCollection()->prepareTag($tag);
+
+            // Skip tags queued moments ago (see $queuedTags)
+            if (isset(self::$queuedTags[$tag]) && self::$queuedTags[$tag] > $now - self::TAG_DEDUPE_WINDOW) {
+                continue;
+            }
+
+            self::$queuedTags[$tag] = $now;
 
             $purgeEvent = new PurgeEvent([
                 'tag' => $tag,
@@ -279,5 +320,49 @@ class EventRegistrar
 
             Plugin::getInstance()->trigger(Plugin::EVENT_AFTER_PURGE, $purgeEvent);
         }
+
+        if (count(self::$queuedTags) > 1000) {
+            self::$queuedTags = array_filter(
+                self::$queuedTags,
+                fn(int $queuedAt) => $queuedAt > $now - self::TAG_DEDUPE_WINDOW
+            );
+        }
+    }
+
+    /**
+     * Tags to purge on top of the changed element's own tags.
+     *
+     * @param \yii\base\Event $event
+     *
+     * @return string[]
+     */
+    protected static function resolveRelatedTags(Event $event): array
+    {
+        $settings = Plugin::getInstance()->getSettings();
+
+        if (!$event instanceof ElementEvent || !$settings->relatedSections) {
+            return [];
+        }
+
+        // Blocks are saved on behalf of the entry holding them
+        $element = $event->element;
+        $rootOwner = $element->getRootOwner();
+        if ($rootOwner !== null && $rootOwner !== $element) {
+            $element = $rootOwner;
+        }
+
+        if (!$element instanceof Entry || $element->section === null) {
+            return [];
+        }
+
+        $tags = [];
+
+        foreach ($settings->relatedSections[$element->section->handle] ?? [] as $relatedHandle) {
+            if ($relatedSection = \Craft::$app->getEntries()->getSectionByHandle($relatedHandle)) {
+                $tags[] = Plugin::TAG_PREFIX_SECTION . $relatedSection->id;
+            }
+        }
+
+        return $tags;
     }
 }

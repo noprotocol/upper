@@ -1,5 +1,38 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- `relatedSections` config option: purge the section tag of pages that list entries
+  of another section (overviews) when one of those entries changes, is added or is
+  deleted. Matrix blocks are resolved to the entry holding them.
+
+### Fixed
+- A refused purge is no longer lost: `PurgeCacheJob` requeues itself with a delay
+  when the driver reports a failure, which is what happens when a CDN rate limit is
+  exhausted (`purgeTag()`'s return value was ignored before).
+- Repeated tags are queued once: Craft fires a save event per propagated site and
+  bulk jobs save element after element, so a single entry change could queue 13
+  purge jobs for 4 distinct tags. Duplicates within a 2 second window are skipped,
+  which keeps bulk operations within the CDN's purge rate limit.
+- Akamai driver: an unset or empty `AKAMAI_MAX_SIZE` was written to `$_ENV` as
+  `false`, which EdgeGrid passed into `substr()` while signing. On PHP 8 that threw
+  a `TypeError` before any request was sent, so nothing was ever purged.
+- Akamai driver: purge responses are inspected now. A rate limit (`429`) is logged,
+  and other errors are reported with the API's own message instead of being
+  swallowed by `file_get_contents()`.
+- Akamai driver: a relative url purge is skipped with a warning instead of being
+  prefixed with `DEFAULT_SITE_URL`, which could only ever match objects on that one
+  hostname and produced a malformed url (a `400`) when it was a relative path.
+- `AkamaiApiException`: reads the `title`/`detail` fields of CCU responses, which
+  previously surfaced as "Unknown error".
+- Akamai driver: url purges are sent as one batch per network instead of one
+  request per url.
+
+### Changed
+- Akamai driver: purge request bodies are chunked to stay within Akamai's 50 KB
+  limit and within `AKAMAI_MAX_SIZE`, since EdgeGrid only signs that many bytes.
+
 ## [2.0.0] - 2023-XX-XX
 - Prepare for Craft 4 compatibility
 - ...
